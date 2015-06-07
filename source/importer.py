@@ -11,6 +11,7 @@ import os
 import os.path
 import argparse
 import xml.etree.ElementTree as ET
+import psycopg2
 
 """
 Tile and import into database our raster files.
@@ -28,6 +29,10 @@ class Importer:
         self._tmp_dir = "/Users/jharrison902/Desktop/giswork/tmp"
         self._bands={}
         self._masks={}
+        try:
+            self._conn = psycopg2.connect(dbname="GISBox",user="postgres",password="postgres",host="localhost")
+        except:
+            print "Could not connect to the database!"
     
     def get_satellite_dictionary(self):
         satellites = {}
@@ -125,9 +130,12 @@ class Importer:
         Generate the string to store a tile in the database.
         """
         cmd = 'gdalwarp'
+        cmd+=' -q'
+        
         cmd+=' -of GTiff' #geotiff output
         cmd+=' -tr 30 30' #30m resolution
         cmd+=' -te '+str(tile_x)+' '+str(tile_y)+' '+str(tile_x+size)+' '+str(tile_y+size)
+        cmd+=' -tap -tap'
         cmd+=' -r cubic' #cubic resampling if we absolutely have to resample
         cmd+=' '+os.path.join(self._directory,input_file)
         cmd+=' '+os.path.join(self._tmp_dir,tile_path)
@@ -171,8 +179,9 @@ class Importer:
                     extent.append([x,y])
                 y_arr.reverse()
             """
-            slice file based on 1000m squares
+            slice file based on 30000m squares
             """
+            tile_size = 30000.0
             #get lower x, lower y
             low_x=10000000000.0
             low_y=10000000000.0
@@ -192,20 +201,29 @@ class Importer:
             while x_step <= high_x:
                 while y_step <= high_y:
                     print "Generating tile: "+str(x_step)+" "+str(y_step)
-                    cmd = self.generate_cmd_string(self._bands[band]['file'],self._satellite+'_'+band+'_'+self._acquisition_date+'_'+str(x_step)+'_'+str(y_step)+'.tif',x_step,y_step,1000)
+                    cmd = self.generate_cmd_string(self._bands[band]['file'],self._satellite+'_'+band+'_'+self._acquisition_date+'_'+str(x_step)+'_'+str(y_step)+'.tif',x_step,y_step,tile_size)
                     os.system(cmd)
                     """
                     Store raster in database
                     """
+                    cmd = self.generate_tif_insertion_cmd_string(self._satellite+'_'+band+'_'+self._acquisition_date+'_'+str(x_step)+'_'+str(y_step)+'.tif')
+                    os.system(cmd)
+                    #execute the import
+                    cmd = "psql -h localhost -p 5432 -U postgres GISBox < "+os.path.join(self._tmp_dir,self._satellite+'_'+band+'_'+self._acquisition_date+'_'+str(x_step)+'_'+str(y_step)+'.tif'+'.sql') #TODO: externalize database settings
+                    os.system(cmd)
                     """
                     TODO: Implement psql insertion!
                     """
-                    y_step+=100.0
+                    
+                    y_step+=tile_size
                 y_step = low_y
-                x_step+=100.0
+                x_step+=tile_size
             
             
-        
+    def generate_tif_insertion_cmd_string(self,input_file):
+        cmd = "raster2pgsql"
+        cmd+=' -a -F -e '+os.path.join(self._tmp_dir,input_file)+' tiles > '+os.path.join(self._tmp_dir,input_file+'.sql')
+        return cmd
     def determine_raster_files(self,input_directory):
         """
         Parse the product metadata and determine the bands and masks
@@ -234,7 +252,6 @@ class Importer:
         
     
 if __name__=="__main__":
-    import sys
     parser = argparse.ArgumentParser(description="Import Landsat surface reflectance products.")
     
     #parser.add_argument('--satellite', type=str, metavar='SATELLITE',required=True,choices=['7','8'],help="The product's satellite",dest="target_satellite")
