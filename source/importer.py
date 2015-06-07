@@ -33,6 +33,62 @@ class Importer:
         satellites['8']=self.set_satellite_landsat_8
         return satellites
     
+    def parse_metadata(self):
+        """
+        Parse the product metadata and generate bounds, etc.
+        """
+        metadata_tree = ET.parse(os.path.join(self._directory,self._product_metadata))
+        root = metadata_tree.getroot()
+        assert root.tag == '{http://espa.cr.usgs.gov/v1.2}espa_metadata'
+        """
+        get overall metadata
+        """
+        global_metadata = root.find('{http://espa.cr.usgs.gov/v1.2}global_metadata')
+        """
+        get band information
+        """
+        band_metadata = root.find('{http://espa.cr.usgs.gov/v1.2}bands')
+        """
+        obtain data from global metadata
+        """
+        self._acquisition_date = global_metadata.find('{http://espa.cr.usgs.gov/v1.2}acquisition_date').text+'T'+global_metadata.find('{http://espa.cr.usgs.gov/v1.2}scene_center_time').text
+        self._bounds={}
+        """
+        Get lat/lon bounds for records
+        """
+        ll_bounds = global_metadata.find('{http://espa.cr.usgs.gov/v1.2}bounding_coordinates')
+        for direction in ll_bounds:
+            cardinal = direction.tag.replace('{http://espa.cr.usgs.gov/v1.2}','')
+            self._bound[cardinal]=float(direction.text)
+        """
+        Get satellite
+        """
+        satellite = global_metadata.find('{http://espa.cr.usgs.gov/v1.2}satellite').text
+        """
+        TODO: make this dynamically draw from available satellites
+        """
+        satellite_list = {'LANDSAT_7':self.set_satellite_landsat_7,'LANDSAT_8':self.set_satellite_landsat_8}
+        satellite_list[satellite]()
+        
+        """
+        Parse band metadata
+        """
+        self._bands={}
+        for band in band_metadata:
+            assert band.tag == '{http://espa.cr.usgs.gov/v1.2}band'
+            attributes = band.attrib
+            if attributes['category'] is 'sr_refl':
+                #This is an sr_band 
+                self._bands[attributes['name']]={}
+                self._bands[attributes['name']]['fill']=attributes['fill_value']
+                self._bands[attributes['name']]['file']=band.find('{http://espa.cr.usgs.gov/v1.2}file_name').text
+            
+                
+        
+        
+        
+        
+    
     def set_satellite_landsat_7(self):
         """
         Set our importer to use Landsat 7 settings
@@ -77,6 +133,7 @@ class Importer:
         
         files.remove(self._product_metadata)
         self._raster_files = files
+        self._directory=path
         
         
         
