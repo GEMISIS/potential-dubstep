@@ -77,12 +77,18 @@ class Importer:
         for band in band_metadata:
             assert band.tag == '{http://espa.cr.usgs.gov/v1.2}band'
             attributes = band.attrib
-            if attributes['category'] is 'sr_refl':
+            if attributes['category'] is 'image':
                 #This is an sr_band 
                 self._bands[attributes['name']]={}
                 self._bands[attributes['name']]['fill']=attributes['fill_value']
                 self._bands[attributes['name']]['file']=band.find('{http://espa.cr.usgs.gov/v1.2}file_name').text
-            
+            elif attributes['category'] is 'pq':
+                self._masks[attributes['name']]={}
+                self._masks[attributes['name']]['bits']=[]
+                for bit in band.find('{http://espa.cr.usgs.gov/v1.2}bitmap_description'):
+                    self._masks[attributes['name']]['bits']=bit.attrib[num]
+        
+                
                 
         
         
