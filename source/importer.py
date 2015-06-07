@@ -6,7 +6,7 @@ Created on Sat Jun  6 23:58:51 2015
 """
 
 import gdal
-import psycopg2
+
 import os
 import os.path
 import argparse
@@ -39,6 +39,7 @@ class Importer:
         """
         Parse the product metadata and generate bounds, etc.
         """
+        print "Parsing metadata"
         metadata_tree = ET.parse(os.path.join(self._directory,self._product_metadata))
         root = metadata_tree.getroot()
         assert root.tag == '{http://espa.cr.usgs.gov/v1.2}espa_metadata'
@@ -61,7 +62,7 @@ class Importer:
         ll_bounds = global_metadata.find('{http://espa.cr.usgs.gov/v1.2}bounding_coordinates')
         for direction in ll_bounds:
             cardinal = direction.tag.replace('{http://espa.cr.usgs.gov/v1.2}','')
-            self._bound[cardinal]=float(direction.text)
+            self._bounds[cardinal]=float(direction.text)
         """
         Get satellite
         """
@@ -77,18 +78,22 @@ class Importer:
         """
         self._bands={}
         for band in band_metadata:
+            print band.tag
             assert band.tag == '{http://espa.cr.usgs.gov/v1.2}band'
             attributes = band.attrib
-            if attributes['category'] is 'image':
+            if attributes['category'] == "image":
                 #This is an sr_band 
                 self._bands[attributes['name']]={}
+                print "Found band "+attributes['name']
                 self._bands[attributes['name']]['fill']=attributes['fill_value']
                 self._bands[attributes['name']]['file']=band.find('{http://espa.cr.usgs.gov/v1.2}file_name').text
-            elif attributes['category'] is 'pq':
+            elif attributes['category'] =='pq':
                 self._masks[attributes['name']]={}
                 self._masks[attributes['name']]['bits']=[]
                 for bit in band.find('{http://espa.cr.usgs.gov/v1.2}bitmap_description'):
                     self._masks[attributes['name']]['bits']=bit.attrib['num']
+            else:
+                print "Unidentified record in metadata: "+attributes['category']+"!"
         
                 
                 
@@ -134,9 +139,11 @@ class Importer:
         Convert raster into tiles using gdalwarp.
         Coordinates will be stored in self._projection_target projection.
         """
+        print "Preparing to create tiles"
         gdal.AllRegister()
         for band in self._bands:
-            file_path = os.path.join(self._directory,band['file'])
+            print band
+            file_path = os.path.join(self._directory,self._bands[band]['file'])
             band_file = gdal.Open(file_path)
             """
             TODO: implement a database lock on inserts at this point
@@ -144,7 +151,8 @@ class Importer:
             """
             Reproject our data
             """
-            band_file.setProjection(self._projection_target)
+            print "Reprojecting product..."
+            band_file.SetProjection(self._projection_target)
             band_file.FlushCache()
             """
             Slice data into tiles based on size in coordinate system
@@ -163,7 +171,7 @@ class Importer:
                     extent.append([x,y])
                 y_arr.reverse()
             """
-            slice file based on 100m squares
+            slice file based on 1000m squares
             """
             #get lower x, lower y
             low_x=10000000000.0
@@ -183,7 +191,8 @@ class Importer:
             y_step = low_y
             while x_step <= high_x:
                 while y_step <= high_y:
-                    cmd = self.generate_cmd_string(band['file'],self._satellite+'_'+band+'_'+self._acquisition_date+'_'+str(x_step)+'_'+str(y_step)+'.tif',x_step,y_step,100)
+                    print "Generating tile: "+str(x_step)+" "+str(y_step)
+                    cmd = self.generate_cmd_string(self._bands[band]['file'],self._satellite+'_'+band+'_'+self._acquisition_date+'_'+str(x_step)+'_'+str(y_step)+'.tif',x_step,y_step,1000)
                     os.system(cmd)
                     """
                     Store raster in database
@@ -201,15 +210,18 @@ class Importer:
         """
         Parse the product metadata and determine the bands and masks
         """
+        print "Locating raster files in: "+input_directory
         if not input_directory[0] is '/':
             path = os.getcwd()
             path = os.path.join(path,input_directory)
         else:
+            print "This is an absolute path!"
             path = input_directory
         files = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path,f))]
         #find xml file
         for file_name in files:
             if file_name.endswith('.xml'):
+                print "Product metadata found! "+file_name
                 self._product_metadata = file_name
                 break
         
@@ -222,11 +234,15 @@ class Importer:
         
     
 if __name__=="__main__":
+    import sys
     parser = argparse.ArgumentParser(description="Import Landsat surface reflectance products.")
-    parser.add_argument('--satellite', type=str, metavar='SATELLITE',required=True,choices=['7','8'],help="The product's satellite",dest="target_satellite")
-    parser.add_argument('--dir',type=str,metavar='DIRECTORY',required=True,help="The path of the directory of SR products.",dest="directory")
+    
+    #parser.add_argument('--satellite', type=str, metavar='SATELLITE',required=True,choices=['7','8'],help="The product's satellite",dest="target_satellite")
+    parser.add_argument('--directory','-d',type=str,metavar='DIRECTORY',required=True,action='store',help="The path of the directory of SR products.",dest="directory")
+    args = parser.parse_args()
     importer = Importer()
-    importer.determine_raster_files(directory)
+    importer.determine_raster_files(args.directory)
+    importer.parse_metadata()
     importer.tile_raster()
     
     
