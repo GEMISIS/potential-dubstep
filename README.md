@@ -9,3 +9,6 @@ Purpose of project:
 June 6th, 2015: Initial commit, updated readme to display purpose of project.
 
 June 7th, 2015: Initial commit of tiling structure in importer.py
+
+Notice:
+This code is purely for acedemic research into small area gridding of georeferenced data. This code is not meant for large scale application or global integration.
