@@ -7,3 +7,5 @@ Purpose of project:
 3. To create a well documented framework for grid aligning Landsat 7/8 surface reflectance products to all for learning and improvement by the open source community.
 
 June 6th, 2015: Initial commit, updated readme to display purpose of project.
+
+June 7th, 2015: Initial commit of tiling structure in importer.py
